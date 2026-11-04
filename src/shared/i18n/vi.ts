@@ -25,7 +25,7 @@ export const vi: Record<Key, string> = {
   'home.code_ph': 'MÃ',
   'home.join': 'Vào phòng',
   'home.public_rooms': 'Phòng đang mở',
-  'home.no_rooms': 'Hiện chưa có phòng công khai. Hãy tạo phòng và bật công khai.',
+  'home.no_rooms': 'Hiện chưa có phòng công khai. Bạn có thể mở phòng mới.',
   'home.room_host': 'Phòng của {name}',
   'lobby.public': 'Công khai: hiện phòng này trong danh sách phòng đang mở',
   'lobby.public_hint': 'Phòng ẩn chỉ vào được bằng mã.',

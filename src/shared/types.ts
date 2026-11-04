@@ -17,7 +17,7 @@ export interface GameSettings {
   /** listed on the home page while waiting; hidden rooms are reachable by code only */
   isPublic: boolean;
 }
-export const DEFAULT_SETTINGS: GameSettings = { mode: 'capitalist', roundLimit: 0, auctions: true, turnTimer: 90, isPublic: false };
+export const DEFAULT_SETTINGS: GameSettings = { mode: 'capitalist', roundLimit: 0, auctions: true, turnTimer: 90, isPublic: true };
 
 /** A translatable message: the client turns key + params into text in the viewer's language. */
 export type MsgParam = string | number | Msg;

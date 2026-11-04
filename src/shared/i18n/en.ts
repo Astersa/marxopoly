@@ -23,7 +23,7 @@ export const en = {
   'home.code_ph': 'CODE',
   'home.join': 'Join',
   'home.public_rooms': 'Open rooms',
-  'home.no_rooms': 'No public rooms right now. Create one and set it to public.',
+  'home.no_rooms': 'No public rooms right now. Create one to get started.',
   'home.room_host': "{name}'s room",
   'lobby.public': 'Public: show this room in the open rooms list',
   'lobby.public_hint': 'Hidden rooms can only be joined with the code.',

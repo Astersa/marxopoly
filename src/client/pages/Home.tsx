@@ -39,6 +39,7 @@ export function Home() {
   const ready = name.trim().length > 0 && conn === 'online';
 
   const [rooms, setRooms] = useState<RoomListing[]>([]);
+  const [isPublic, setIsPublic] = useState(true);
 
   useEffect(() => {
     if (conn !== 'online') return;
@@ -84,7 +85,12 @@ export function Home() {
             ))}
           </div>
 
-          <button className="btn btn-red w-full mt-5 text-xl" data-testid="create" disabled={!ready || busy} onClick={() => run(() => commands.create(name.trim(), avatar))}>{t('home.create')}</button>
+          <label className="flex items-start gap-3 mt-4 font-semibold text-[color:var(--ink)]">
+            <input type="checkbox" data-testid="create-public" className="w-5 h-5 mt-0.5 shrink-0 accent-[color:var(--red)]" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} />
+            <span>{t('lobby.public')}<span className="block text-sm font-normal text-[color:var(--ink)]/70">{t('lobby.public_hint')}</span></span>
+          </label>
+
+          <button className="btn btn-red w-full mt-4 text-xl" data-testid="create" disabled={!ready || busy} onClick={() => run(() => commands.create(name.trim(), avatar, isPublic))}>{t('home.create')}</button>
 
           <div className="flex items-center gap-3 my-4 text-[color:var(--ink)]/60 font-bold"><span className="flex-1 h-0.5 bg-[color:var(--ink)]/30" />{t('home.or')}<span className="flex-1 h-0.5 bg-[color:var(--ink)]/30" /></div>
 

@@ -287,6 +287,13 @@ test('3D board: language switch mid-game relabels, 3D to 2D to 3D keeps the stat
   await a.waitForTimeout(1500);
   await expect(a.getByTestId('status')).not.toContainText('Resolving');
   const before = await cashes(a);
+  // The camera eases back after following a character: a position read while it moves points at the wrong tile.
+  await expect.poll(async () => {
+    const p = await tileAt(a, 16);
+    await a.waitForTimeout(400);
+    const q = await tileAt(a, 16);
+    return Math.hypot(p.x - q.x, p.y - q.y);
+  }, { timeout: 30000 }).toBeLessThan(1);
   const pos = await tileAt(a, 16);
   await a.mouse.click(pos.x, pos.y);
   await expect(a.getByTestId('board-caption')).toContainText('Cartel Price Alliance');

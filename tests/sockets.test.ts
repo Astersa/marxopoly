@@ -128,10 +128,7 @@ describe('public room list', () => {
   it('lists only public, waiting rooms with free seats, and exposes no ids or tokens', async () => {
     const { host, h, guests } = await lobby(2);
     const stranger = await client();
-    expect(await list(stranger)).toEqual([]); // hidden by default
-
-    await emit(host, 'room:update-settings', { isPublic: true });
-    const rooms = await list(stranger);
+    const rooms = await list(stranger); // public by default
     expect(rooms).toEqual([{ code: h.code, hostName: 'Host', mode: 'capitalist', players: 2, maxSeats: 4 }]);
     expect(JSON.stringify(rooms)).not.toContain(h.token);
     expect(JSON.stringify(rooms)).not.toContain(h.playerId);
@@ -146,6 +143,15 @@ describe('public room list', () => {
     expect((await list(stranger)).length).toBe(1);
     await emit(host, 'room:update-settings', { isPublic: false });
     expect(await list(stranger)).toEqual([]); // hidden again
+  });
+
+  it('keeps a room created as hidden off the list, still joinable by code', async () => {
+    const host = await client();
+    const h = (await emit<JoinData>(host, 'room:create', { name: 'Host', avatar: 0, isPublic: false })).data!;
+    expect(h.room.settings.isPublic).toBe(false);
+    const stranger = await client();
+    expect(await list(stranger)).toEqual([]);
+    expect((await emit(stranger, 'room:join', { code: h.code, name: 'Guest', avatar: 1 })).ok).toBe(true);
   });
 
   it('drops a public room once the game has started', async () => {

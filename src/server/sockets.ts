@@ -93,7 +93,7 @@ export function attachSockets(io: Server, mgr: RoomManager, ai?: AiHooks) {
       return { code: room.code, playerId: seat.playerId, token: seat.token, room: mgr.publicRoom(room, aiName()) };
     };
 
-    on('room:create', p => { leaveCurrent(); const { room, seat } = mgr.create(p.name, p.avatar, socket.id); return joined(room, seat); });
+    on('room:create', p => { leaveCurrent(); const { room, seat } = mgr.create(p.name, p.avatar, socket.id, p.isPublic); return joined(room, seat); });
     on('room:join', p => { leaveCurrent(); const { room, seat } = mgr.join(p.code, p.name, p.avatar, socket.id); return joined(room, seat); });
     on('room:list', () => mgr.listPublic());
     on('room:leave', () => { leaveCurrent(); return null; });

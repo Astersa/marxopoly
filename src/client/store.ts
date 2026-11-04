@@ -170,8 +170,8 @@ export function setLang(lang: Lang) {
 }
 
 export const commands = {
-  async create(name: string, avatar: number) {
-    try { adopt(await request<JoinData>('room:create', { name, avatar })); sessionStore.saveProfile({ name, avatar }); } catch (e) { fail(e); }
+  async create(name: string, avatar: number, isPublic = true) {
+    try { adopt(await request<JoinData>('room:create', { name, avatar, isPublic })); sessionStore.saveProfile({ name, avatar }); } catch (e) { fail(e); }
   },
   async join(code: string, name: string, avatar: number) {
     try { adopt(await request<JoinData>('room:join', { code: code.trim().toUpperCase(), name, avatar })); sessionStore.saveProfile({ name, avatar }); } catch (e) { fail(e); }

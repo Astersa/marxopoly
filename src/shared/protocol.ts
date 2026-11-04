@@ -43,7 +43,7 @@ export const SettingsPatchSchema = z.object({
 }).strict();
 
 export const schemas = {
-  'room:create': z.object({ name: nameSchema, avatar: avatarSchema.default(0) }),
+  'room:create': z.object({ name: nameSchema, avatar: avatarSchema.default(0), isPublic: z.boolean().default(true) }),
   'room:join': z.object({ code: z.string().trim().toUpperCase().max(10), name: nameSchema, avatar: avatarSchema.default(0) }),
   'room:list': z.object({}).passthrough().optional(),
   'room:leave': z.object({}).passthrough().optional(),

@@ -63,13 +63,13 @@ export class RoomManager {
     return room.seats.find(s => s.playerId !== exceptId && s.name.toLowerCase() === name.toLowerCase());
   }
 
-  create(name: string, avatar: number, socketId: string): { room: Room; seat: Seat } {
+  create(name: string, avatar: number, socketId: string, isPublic = true): { room: Room; seat: Seat } {
     if (this.rooms.size >= this.limits.maxRooms) throw new ActionError('TOO_MANY_ROOMS', 'The server is full. Try again later.');
     const code = this.genCode();
     const seat = this.newSeat(name, avatar);
     seat.connected = true; seat.socketId = socketId; seat.ready = true;
     const room: Room = {
-      code, status: 'WAITING', hostId: seat.playerId, settings: { ...DEFAULT_SETTINGS }, seats: [], session: null,
+      code, status: 'WAITING', hostId: seat.playerId, settings: { ...DEFAULT_SETTINGS, isPublic }, seats: [], session: null,
       createdAt: Date.now(), lastHumanSeen: Date.now(), finishedAt: null, hostDownSince: null, aiCount: 0, lastNarration: 0,
     };
     this.register(room, seat);
