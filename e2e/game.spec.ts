@@ -177,7 +177,7 @@ test('two players in two languages see the same state, switch language mid-game 
   await b.goto('/');
   // default language comes from the browser
   await expect(a.getByText('Create a room')).toBeVisible();
-  await expect(b.getByText('Tạo phòng')).toBeVisible();
+  await expect(b.getByTestId('create')).toHaveText('Tạo phòng');
   expect(await b.evaluate(() => document.documentElement.lang)).toBe('vi');
 
   await a.fill('#name', 'Ada');

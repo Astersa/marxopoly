@@ -7,7 +7,7 @@ import type { GameEvent, PublicGameState } from '../../shared/types';
 import { PLAYER_COLORS } from '../avatars';
 import type { BoardApi } from '../boardRef';
 import {
-  DIE_FACE_NUMBERS, GROUP_STYLE, HALF, TILE, ZONE, diceEuler, levelFootprint, levelMaxHeight, levelPlan, localToWorld, outward, pickClip, stepDuration, tileCenter, tileSide, walkPath, type Moment,
+  DIE_FACE_NUMBERS, GROUP_STYLE, HALF, TILE, ZONE, diceEuler, levelFootprint, levelMaxHeight, levelPlan, localToWorld, outward, ownerBadgeText, pickClip, readableInk, stepDuration, tileCenter, tileSide, walkPath, type Moment,
 } from './layout3d';
 
 export type Quality = 'high' | 'low';
@@ -53,6 +53,9 @@ export class Board3D implements BoardApi {
   private labels: { mesh: THREE.Mesh; id: number }[] = [];
   private stages: Stage[] = [];
   private markers: THREE.Group[] = [];
+  private badges: (THREE.Sprite | null)[] = [];
+  private badgeMats = new Map<string, THREE.SpriteMaterial>();
+  private synced = false;
   private chars = new Map<string, Char>();
   private diceGroup = new THREE.Group();
   private dice: THREE.Mesh[] = [];
@@ -371,7 +374,11 @@ export class Board3D implements BoardApi {
     rotor.add(stageGroup);
     const st: Stage = { group: stageGroup, level: -1, mortgaged: false, owner: null, saved: new Map(), spin: [], sign: null, top: 1 };
     this.stages[id] = st;
-    if (sp.kind === 'property') this.setStage(id, 0, false); else this.buildSpecial(id, st);
+    // Buyable land starts empty: buildings only appear once someone owns it (see sync).
+    if (sp.kind !== 'property') {
+      this.buildSpecial(id, st);
+      if (sp.kind === 'station' || sp.kind === 'utility') stageGroup.visible = false;
+    }
 
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(ZONE.plaqueW, ZONE.plaqueD), new THREE.MeshBasicMaterial({ transparent: true }));
     this.disposables.push(plane.geometry);
@@ -504,6 +511,13 @@ export class Board3D implements BoardApi {
     const prev = st.level;
     for (const c of [...st.group.children]) st.group.remove(c);
     st.saved.clear(); st.sign = null;
+    if (level < 0) {
+      st.spin = []; st.top = 0; st.level = -1; st.mortgaged = false;
+      st.group.scale.setScalar(1);
+      if (animate) this.puff(id, 8);
+      this.refreshSmokeSources();
+      return;
+    }
     const style = GROUP_STYLE[sp.group];
     const plan = levelPlan(level);
     const fp = levelFootprint(level), maxH = levelMaxHeight(level);
@@ -563,7 +577,7 @@ export class Board3D implements BoardApi {
       this.disposables.push(mat);
       const sprite = new THREE.Sprite(mat);
       sprite.scale.set(1.15, 1.15, 1);
-      sprite.position.set(0, st.top + 1.0, 0);
+      sprite.position.set(0, st.top + 1.5, 0); // above the owner badge
       sprite.renderOrder = 20;
       st.group.add(sprite); st.sign = sprite;
     }
@@ -574,19 +588,49 @@ export class Board3D implements BoardApi {
     while (marker.children.length) marker.remove(marker.children[0]);
     const st = this.stages[id];
     st.owner = owner;
+    const badge = this.badges[id];
+    if (badge) { badge.parent?.remove(badge); this.badges[id] = null; }
     if (!owner || !this.state) { marker.visible = false; return; }
     const idx = this.state.players.findIndex(p => p.id === owner);
     const color = new THREE.Color(PLAYER_COLORS[idx % 4]);
     const glow = this.mat(color.getHex(), { rough: 0.4, emissive: color.getHex(), ei: 0.8 });
     const e = TILE / 2 - 0.1, w = 0.2;
     marker.add(this.box(TILE - 0.1, 0.07, w, glow, 0, 0, e, false), this.box(TILE - 0.1, 0.07, w, glow, 0, 0, -e, false), this.box(w, 0.07, TILE - 0.1, glow, e, 0, 0, false), this.box(w, 0.07, TILE - 0.1, glow, -e, 0, 0, false));
-    const pole = this.cyl(0.04, 0.04, 1.8, this.mat(0xd9d2c0, { metal: 0.6 }), 8);
-    pole.position.set(-1.0, 0.9, -1.0);
-    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.52), new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide, roughness: 0.7, emissive: color, emissiveIntensity: 0.3 }));
-    this.disposables.push(cloth.geometry, cloth.material as THREE.Material);
-    cloth.position.set(-1.0 + 0.45, 1.5, -1.0);
-    marker.add(pole, cloth);
+    // the whole tile takes the owner's colour, so ownership reads at a glance from across the board
+    const floor = this.mat(color.getHex(), { rough: 0.7, emissive: color.getHex(), ei: 0.25 });
+    marker.add(this.box(TILE - 0.1, 0.02, TILE - 0.1, floor, 0, TILE_Y + 0.012 - marker.position.y, 0, false));
     marker.visible = true;
+    // a name tag, drawn over everything: colour alone is not enough to tell owners apart
+    const sprite = new THREE.Sprite(this.badgeMaterial(owner, this.state.players[idx]?.name ?? '', PLAYER_COLORS[idx % 4]));
+    sprite.scale.set(2.1, 0.79, 1);
+    sprite.renderOrder = 15;
+    this.rotors[id].add(sprite);
+    this.badges[id] = sprite;
+    this.placeBadge(id);
+  }
+
+  private placeBadge(id: number) {
+    this.badges[id]?.position.set(0, TILE_Y + this.stages[id].top + 0.55, ZONE.buildingZ);
+  }
+
+  /** one shared name-tag material per player */
+  private badgeMaterial(playerId: string, name: string, color: string) {
+    let m = this.badgeMats.get(playerId);
+    if (m) return m;
+    const tex = this.canvasTex(320, 120, ctx => {
+      ctx.fillStyle = '#16130f';
+      ctx.beginPath(); ctx.roundRect(0, 0, 320, 120, 26); ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.roundRect(9, 9, 302, 102, 18); ctx.fill();
+      ctx.fillStyle = readableInk(color);
+      ctx.font = '700 72px "Barlow Condensed", sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(ownerBadgeText(name), 160, 64, 280);
+    });
+    m = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    this.disposables.push(m);
+    this.badgeMats.set(playerId, m);
+    return m;
   }
 
   private buildCenter() {
@@ -967,10 +1011,21 @@ export class Board3D implements BoardApi {
     for (const [idStr, pr] of Object.entries(state.props)) {
       const id = Number(idStr);
       const st = this.stages[id];
-      if (SPACES[id].kind === 'property') this.setStage(id, pr.level, st.level >= 0 && this.busy === 0 && !document.hidden);
+      const animate = this.synced && this.busy === 0 && !document.hidden;
+      if (SPACES[id].kind === 'property') this.setStage(id, pr.owner ? pr.level : -1, animate);
+      else if (st.group.visible !== !!pr.owner) {
+        st.group.visible = !!pr.owner;
+        if (pr.owner && animate) {
+          st.group.scale.setScalar(0.05);
+          this.addTween(650, k => st.group.scale.setScalar(0.05 + 0.95 * easeOutBack(k)));
+          this.puff(id, 14);
+        }
+      }
       this.applyMortgage(id, pr.mortgaged);
       if (st.owner !== pr.owner || (st.owner && this.markers[id].children.length === 0)) this.rebuildMarker(id, pr.owner);
+      this.placeBadge(id);
     }
+    this.synced = true;
     if (this.busy === 0) {
       const counts = new Map<number, number>();
       for (const p of state.players) {

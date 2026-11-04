@@ -140,6 +140,19 @@ export const LEVEL_MAX_HEIGHT = [0.9, 1.2, 1.5, 1.8, 2.1, 2.5];
 export const levelFootprint = (level: number) => LEVEL_FOOTPRINT[Math.max(0, Math.min(5, Math.floor(level)))];
 export const levelMaxHeight = (level: number) => LEVEL_MAX_HEIGHT[Math.max(0, Math.min(5, Math.floor(level)))];
 
+/** Text on an owner's name tag: upper case, at most 8 characters (by code point, so Vietnamese letters stay whole). */
+export function ownerBadgeText(name: string): string {
+  const chars = Array.from(name.trim().toUpperCase());
+  return chars.length > 8 ? chars.slice(0, 7).join('') + '…' : chars.join('');
+}
+
+/** Dark or light text, whichever is readable on a #rrggbb background. */
+export function readableInk(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const luminance = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return luminance > 0.55 ? '#16130f' : '#ffffff';
+}
+
 /** Zones inside a tile in the viewer's frame (z grows towards the viewer): buildings at the back, walking lane in the middle, name plaque in front. */
 export const ZONE = { buildingZ: -0.55, laneZ: 0.15, plaqueZ: 0.69, plaqueW: 2.42, plaqueD: 1.1 };
 

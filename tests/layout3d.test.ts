@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { GROUP_SPACES, SPACES } from '../src/shared/board';
-import { DIE_FACE_NUMBERS, GROUP_STYLE, diceEuler, gridCell, levelPlan, outward, passesGo, pickClip, slotOffset, stepDuration, tileCenter, tileSide, walkPath } from '../src/client/three/layout3d';
+import { DIE_FACE_NUMBERS, GROUP_STYLE, diceEuler, gridCell, levelPlan, outward, ownerBadgeText, passesGo, pickClip, readableInk, slotOffset, stepDuration, tileCenter, tileSide, walkPath } from '../src/client/three/layout3d';
+
+describe('owner badge', () => {
+  it('upper-cases and shortens names without splitting Vietnamese letters', () => {
+    expect(ownerBadgeText(' Bình ')).toBe('BÌNH');
+    expect(ownerBadgeText('Nguyễn Văn An')).toBe('NGUYỄN …');
+    expect(ownerBadgeText('12345678')).toBe('12345678');
+  });
+  it('picks readable text for every player colour', () => {
+    expect(readableInk('#f2b632')).toBe('#16130f');
+    expect(readableInk('#8f63d9')).toBe('#ffffff');
+    expect(readableInk('#e5483a')).toBe('#ffffff');
+  });
+});
 
 describe('3D layout', () => {
   it('has exactly 40 unique tile positions on the outer ring', () => {
