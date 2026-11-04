@@ -1,43 +1,48 @@
-// Takes lobby and game screenshots at desktop and phone sizes against a running server.
-// Usage: PORT=3217 node scripts/shots.mjs [outDir]
+// Takes home, lobby and game screenshots at desktop and phone sizes against a running server.
+// Usage: PORT=3217 [LANG_UI=vi] node scripts/shots.mjs [outDir]
+// With LANG_UI=vi the browser locale is vi-VN and files are named like lobby-vi-1440x900.png.
 import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const base = `http://localhost:${process.env.PORT || 3217}`;
+const lang = process.env.LANG_UI === 'vi' ? 'vi' : 'en';
 const out = path.resolve(process.argv[2] || 'docs/screenshots');
 fs.mkdirSync(out, { recursive: true });
+const tag = lang === 'vi' ? 'vi-' : '';
+const names = lang === 'vi' ? ['An', 'Bình'] : ['Ada', 'Boris'];
 
 const browser = await chromium.launch();
 const sizes = [{ name: '1440x900', width: 1440, height: 900 }, { name: '390x844', width: 390, height: 844 }];
 
 for (const size of sizes) {
-  const ctxA = await browser.newContext({ viewport: { width: size.width, height: size.height }, deviceScaleFactor: 1 });
-  const ctxB = await browser.newContext({ viewport: { width: size.width, height: size.height } });
+  const opts = { viewport: { width: size.width, height: size.height }, locale: lang === 'vi' ? 'vi-VN' : 'en-US' };
+  const ctxA = await browser.newContext(opts);
+  const ctxB = await browser.newContext(opts);
   const a = await ctxA.newPage();
   const b = await ctxB.newPage();
   a.on('pageerror', e => console.log('pageerror A', e.message));
   b.on('pageerror', e => console.log('pageerror B', e.message));
   await a.goto(base);
   await a.waitForSelector('#name');
-  await a.screenshot({ path: path.join(out, `home-${size.name}.png`) });
-  await a.fill('#name', 'Ada');
-  await a.click('text=Create a room');
+  await a.screenshot({ path: path.join(out, `home-${tag}${size.name}.png`) });
+  await a.fill('#name', names[0]);
+  await a.getByTestId('create').click();
   await a.waitForSelector('[data-testid=room-code]');
   const code = (await a.textContent('[data-testid=room-code]')).trim();
   await b.goto(base);
-  await b.fill('#name', 'Boris');
-  await b.fill('input[aria-label="Room code"]', code);
-  await b.click('button:has-text("Join")');
+  await b.fill('#name', names[1]);
+  await b.getByTestId('code-input').fill(code);
+  await b.getByTestId('join').click();
   await b.waitForSelector('[data-testid=room-code]');
-  await a.click('text=Add bot');
-  await b.click("text=I'm ready");
+  await a.getByTestId('add-bot').first().click();
+  await b.getByTestId('ready').click();
   await a.waitForTimeout(400);
-  await a.screenshot({ path: path.join(out, `lobby-${size.name}.png`), fullPage: true });
-  await a.click('[data-testid=start]');
+  await a.screenshot({ path: path.join(out, `lobby-${tag}${size.name}.png`), fullPage: true });
+  await a.getByTestId('start').click();
   await a.waitForSelector('[data-testid=board] canvas');
   await a.waitForTimeout(2500);
-  await a.screenshot({ path: path.join(out, `game-${size.name}.png`), fullPage: true });
+  await a.screenshot({ path: path.join(out, `game-${tag}${size.name}.png`), fullPage: true });
   // play a few moves so tokens, ownership and cards show up
   for (let i = 0; i < 14; i++) {
     for (const p of [a, b]) {
@@ -52,7 +57,10 @@ for (const size of sizes) {
     }
   }
   await a.waitForTimeout(1500);
-  await a.screenshot({ path: path.join(out, `game-played-${size.name}.png`), fullPage: true });
+  await a.screenshot({ path: path.join(out, `game-played-${tag}${size.name}.png`), fullPage: true });
+  await a.locator('[role=tablist] button[role=tab]').last().click();
+  await a.waitForTimeout(500);
+  await a.screenshot({ path: path.join(out, `game-log-${tag}${size.name}.png`), fullPage: true });
   console.log(size.name, 'scrollWidth', await a.evaluate(() => document.documentElement.scrollWidth), 'clientWidth', await a.evaluate(() => document.documentElement.clientWidth));
   await ctxA.close();
   await ctxB.close();

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { DEFAULT_LIMITS, RoomManager, type RoomLimits } from './rooms';
+import type { Rng } from '../shared/types';
 import type { Timing } from './session';
 import { attachSockets, type AiHooks } from './sockets';
 
@@ -13,6 +14,8 @@ export interface AppOptions {
   limits?: Partial<RoomLimits>;
   timing?: Timing;
   clientDir?: string;
+  /** Test hook: random source for dice and shuffles. Defaults to crypto. */
+  rng?: Rng;
 }
 
 export function createApp(opts: AppOptions = {}) {
@@ -32,7 +35,7 @@ export function createApp(opts: AppOptions = {}) {
 
   const server = http.createServer(app);
   const io = new Server(server, { serveClient: false, pingInterval: 10000, pingTimeout: 15000, maxHttpBufferSize: 1e5 });
-  const mgr = new RoomManager({ ...DEFAULT_LIMITS, ...opts.limits }, opts.timing);
+  const mgr = new RoomManager({ ...DEFAULT_LIMITS, ...opts.limits }, opts.timing, opts.rng);
   attachSockets(io, mgr, opts.ai);
 
   const sweeper = setInterval(() => {

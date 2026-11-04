@@ -53,7 +53,8 @@ export const schemas = {
   'room:start': z.object({}).passthrough().optional(),
   'game:action': z.object({ actionId: z.string().min(1).max(64), action: ActionSchema }),
   'game:reconnect': z.object({ token: z.string().min(8).max(200) }),
-  'ai:ask': z.object({ kind: z.enum(['tutor', 'advisor']), question: z.string().trim().min(1).max(500), spaceId: z.number().int().min(0).max(39).optional() }),
+  'ai:ask': z.object({ kind: z.enum(['tutor', 'advisor']), question: z.string().trim().min(1).max(500), spaceId: z.number().int().min(0).max(39).optional(), lang: z.enum(['en', 'vi']).default('en') }),
+  'session:set-lang': z.object({ lang: z.enum(['en', 'vi']) }),
 } as const;
 
 export type ClientEvent = keyof typeof schemas;

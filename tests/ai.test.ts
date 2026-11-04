@@ -87,7 +87,7 @@ describe('AiService', () => {
   });
   it('narration falls back to offline text from the card explanation', async () => {
     const svc = createAiService({ remote: { name: 'claude', complete: async () => { throw new Error('x'); } } });
-    const text = await svc.narrate(room(), newGame(2), [{ type: 'card', playerId: 'p0', cardId: 'obj-inflation', deck: 'objective' }]);
+    const text = await svc.narrate(room(), newGame(2), [{ type: 'card', playerId: 'p0', cardId: 'obj-inflation', deck: 'objective' }], 'en');
     expect(text).toContain('Inflation');
   });
 });

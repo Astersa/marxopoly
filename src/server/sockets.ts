@@ -1,5 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import { ZodError } from 'zod';
+import type { Lang } from '../shared/i18n';
 import type { Ack, AiAnswer, ClientEvent, JoinData } from '../shared/protocol';
 import { schemas } from '../shared/protocol';
 import { ActionError, type GameEvent, type GameState } from '../shared/types';
@@ -8,11 +9,11 @@ import type { SessionHooks } from './session';
 
 export interface AiHooks {
   name: string;
-  ask(room: Room, seat: Seat, req: { kind: 'tutor' | 'advisor'; question: string; spaceId?: number }): Promise<AiAnswer>;
-  narrate(room: Room, state: GameState, events: GameEvent[]): Promise<string | null>;
+  ask(room: Room, seat: Seat, req: { kind: 'tutor' | 'advisor'; question: string; spaceId?: number; lang?: Lang }): Promise<AiAnswer>;
+  narrate(room: Room, state: GameState, events: GameEvent[], lang: Lang): Promise<string | null>;
 }
 
-interface SockData { code?: string; playerId?: string }
+interface SockData { code?: string; playerId?: string; lang?: Lang }
 
 export function attachSockets(io: Server, mgr: RoomManager, ai?: AiHooks) {
   const aiName = () => ai?.name ?? 'offline';
@@ -28,7 +29,16 @@ export function attachSockets(io: Server, mgr: RoomManager, ai?: AiHooks) {
       const last = events.some(e => e.type === 'gameover') ? 0 : room.lastNarration;
       if (now - last < 20_000) return;
       room.lastNarration = now;
-      ai.narrate(room, state, events).then(text => { if (text) io.to(room.code).emit('ai:narration', { text }); }).catch(() => undefined);
+      // One narration per language that someone in the room is actually using, sent only to those sockets.
+      void io.in(room.code).fetchSockets().then(socks => {
+        const langs = new Set<Lang>(socks.map(s => ((s.data as SockData).lang ?? 'en') as Lang));
+        for (const lang of langs) {
+          ai.narrate(room, state, events, lang).then(text => {
+            if (!text) return;
+            for (const s of socks) if (((s.data as SockData).lang ?? 'en') === lang) s.emit('ai:narration', { text });
+          }).catch(() => undefined);
+        }
+      }).catch(() => undefined);
     },
   });
 
@@ -125,6 +135,7 @@ export function attachSockets(io: Server, mgr: RoomManager, ai?: AiHooks) {
       if (room.session) setImmediate(() => socket.emit('game:snapshot', { state: room.session!.snapshot(), seq: room.session!.seq }));
       return join;
     });
+    on('session:set-lang', p => { data.lang = p.lang; return null; });
     on('ai:ask', async p => {
       const { room, seat } = ctx();
       if (!ai) throw new ActionError('AI_UNAVAILABLE', 'The assistant is not available.');

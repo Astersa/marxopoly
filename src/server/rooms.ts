@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { MAX_SEATS, ROOM_CODE_ALPHABET, ROOM_CODE_RE, type RoomPublic, type RoomStatus, type SeatPublic } from '../shared/protocol';
-import { ActionError, DEFAULT_SETTINGS, type GameSettings } from '../shared/types';
+import { ActionError, DEFAULT_SETTINGS, type GameSettings, type Rng } from '../shared/types';
 import { GameSession, type SessionHooks, type Timing } from './session';
 
 export interface Seat {
@@ -39,7 +39,7 @@ export class RoomManager {
   rooms = new Map<string, Room>();
   private tokens = new Map<string, { code: string; playerId: string }>();
 
-  constructor(public limits: RoomLimits = DEFAULT_LIMITS, private timing?: Timing) {}
+  constructor(public limits: RoomLimits = DEFAULT_LIMITS, private timing?: Timing, private rng?: Rng) {}
 
   private genCode(): string {
     for (let tries = 0; tries < 50; tries++) {
@@ -227,7 +227,7 @@ export class RoomManager {
     room.seats = room.seats.filter(s => s.isBot || s.connected);
     room.session = new GameSession(
       room.seats.map(s => ({ id: s.playerId, name: s.name, avatar: s.avatar, isBot: s.isBot })),
-      room.settings, hooks, undefined, this.timing,
+      room.settings, hooks, this.rng, this.timing,
     );
     room.status = 'PLAYING';
   }

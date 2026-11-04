@@ -182,7 +182,7 @@ describe('game over sockets', () => {
     sock.close();
     await sleep(600);
     expect(room.session!.seq).toBeGreaterThan(before + 1);
-    expect(room.session!.state.log.some(l => l.text.includes('rolls'))).toBe(true);
+    expect(room.session!.state.log.some(l => l.key.startsWith('log.roll'))).toBe(true);
   });
 
   it('bots take their turns once humans are gone (autopilot + bot AI)', async () => {
@@ -193,8 +193,8 @@ describe('game over sockets', () => {
     const room = ctx.mgr.rooms.get(l.h.code)!;
     l.host.close(); l.guests[0].s.close();
     await sleep(2500);
-    const text = room.session!.state.log.map(x => x.text).join(' | ');
-    expect(text).toMatch(/Bot \w+ rolls/);
+    const rolls = room.session!.state.log.filter(x => x.key.startsWith('log.roll') && String(x.params?.name).startsWith('Bot'));
+    expect(rolls.length).toBeGreaterThan(0);
     expect(room.session!.state.players.filter(p => p.isBot)).toHaveLength(1);
     expect(room.session!.seq).toBeGreaterThan(5);
   });
@@ -211,5 +211,37 @@ describe('assistant over sockets', () => {
     await emit(l.host, 'ai:ask', { kind: 'tutor', question: 'What is a trust?' });
     expect((await emit(l.host, 'ai:ask', { kind: 'tutor', question: 'again' })).code).toBe('RATE_LIMITED');
     expect((await emit(l.host, 'ai:ask', { kind: 'tutor', question: 'x'.repeat(501) })).code).toBe('INVALID_PAYLOAD');
+  });
+});
+
+describe('language per socket', () => {
+  it('the Game Master narrates once per language and only to sockets using it', async () => {
+    await ctx.close();
+    ctx.server.close();
+    const q: number[] = [];
+    ctx = createApp({
+      ai: createAiService({}), rng: () => (q.length ? q.shift()! : 0.5),
+      timing: { botMin: 10, botMax: 20, disconnectMs: 60000, tradeMs: 60000, autoStepMs: 20 },
+    });
+    await new Promise<void>(r => ctx.server.listen(0, '127.0.0.1', r));
+    url = `http://127.0.0.1:${(ctx.server.address() as AddressInfo).port}`;
+    const g = await startGame(2);
+    expect((await emit(g.guests[0].s, 'session:set-lang', { lang: 'vi' })).ok).toBe(true);
+    expect((await emit(g.guests[0].s, 'session:set-lang', { lang: 'fr' })).code).toBe('INVALID_PAYLOAD');
+    const hostText = next<{ text: string }>(g.host, 'ai:narration');
+    const guestText = next<{ text: string }>(g.guests[0].s, 'ai:narration');
+    const actor = socketFor(g, g.state.actorId!);
+    q.push(0.0833, 0.0833); // two ones: lands on the Objective Event space 2
+    expect((await emit(actor, 'game:action', { actionId: 'n1', action: { type: 'roll' } })).ok).toBe(true);
+    expect((await hostText).text).toContain('turns over');
+    expect((await guestText).text).toContain('lật thẻ');
+    // the state stays language-neutral: log entries are keys with params
+    const room = ctx.mgr.rooms.get(g.h.code)!;
+    expect(room.session!.state.log.every(l => l.key.startsWith('log.'))).toBe(true);
+    // Vietnamese question gets a Vietnamese answer
+    const a = await emit<{ text: string }>(g.guests[0].s, 'ai:ask', { kind: 'tutor', question: 'gia tri thang du la gi', lang: 'vi' });
+    expect(a.data!.text).toContain('Giá trị thặng dư');
+    const b = await emit<{ text: string }>(g.host, 'ai:ask', { kind: 'tutor', question: 'surplus value' });
+    expect(b.data!.text).toContain('Surplus value');
   });
 });

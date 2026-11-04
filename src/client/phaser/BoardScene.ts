@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GROUPS, SPACES, type Space } from '../../shared/board';
+import { localizedSpace, t as tr, tm, type Lang } from '../../shared/i18n';
 import type { GameEvent, PublicGameState } from '../../shared/types';
 import { PLAYER_COLORS, avatarSvg, svgDataUri } from '../avatars';
 import { CANVAS, CORNER, CELL, center, tileRect } from './layout';
@@ -16,6 +17,8 @@ const SLOTS = [[-24, -22], [24, -22], [-24, 24], [24, 24]];
 export class BoardScene extends Phaser.Scene {
   private state: PublicGameState | null = null;
   private compact = false;
+  private lang: Lang = 'en';
+  private T(key: Parameters<typeof tr>[1], p?: Record<string, string | number>) { return tr(this.lang, key, p); }
   private tileLayer!: Phaser.GameObjects.Container;
   private dynGfx!: Phaser.GameObjects.Graphics;
   private selGfx!: Phaser.GameObjects.Graphics;
@@ -36,6 +39,16 @@ export class BoardScene extends Phaser.Scene {
 
   onReady(cb: () => void) { if (this.sys?.isActive?.() && this.tileLayer) cb(); else this.readyCb = cb; }
   setClick(cb: (id: number) => void) { this.clickCb = cb; }
+
+  /** Relabel everything in place. Tokens and running tweens are separate objects and are not touched. */
+  setLang(lang: Lang) {
+    if (lang === this.lang) return;
+    this.lang = lang;
+    if (!this.tileLayer) return;
+    this.rebuildTiles();
+    this.drawCenter();
+    if (this.state) { this.updateCenter(); }
+  }
 
   create() {
     this.cameras.main.setBackgroundColor('#16130f');
@@ -107,6 +120,7 @@ export class BoardScene extends Phaser.Scene {
       ...(wrap ? { wordWrap: { width: wrap, useAdvancedWrap: false } } : {}),
     });
     t.setOrigin(origin[0], origin[1]);
+    t.setPadding({ top: 6, bottom: 3, left: 1, right: 1 });
     t.setResolution(2);
     return t;
   }
@@ -166,13 +180,13 @@ export class BoardScene extends Phaser.Scene {
     const nameH = content.h - (price || sp.kind === 'tax' ? 52 : 20) - (sp.group ? 0 : 36);
     if (!sp.group) this.drawGlyph(sp, cx, content.y + (vertical ? 28 : 34), 1);
     const nameTop = sp.group ? nameY : nameY + 36;
-    const name = this.txt(cx, nameTop, sp.shortName.toUpperCase(), vertical ? 21 : 19, HEX.ink, COND, 'bold', [0.5, 0], content.w - pad * 2);
+    const name = this.txt(cx, nameTop, localizedSpace(this.lang, sp.id).shortName.toUpperCase(), vertical ? 21 : 19, HEX.ink, COND, 'bold', [0.5, 0], content.w - pad * 2);
     this.fitText(name, Math.max(30, nameH), 9, content.w - pad * 2);
     L.add(name);
-    const lower = sp.kind === 'tax' ? (sp.id === 4 ? '100 cr' : '10% NW') : price;
+    const lower = sp.kind === 'tax' ? (sp.id === 4 ? '100 cr' : this.T('board.tax_nw')) : price;
     if (lower) L.add(this.txt(cx, content.y + content.h - 22, lower, 22, HEX.ink, COND, 'bold'));
-    if (!lower && sp.kind === 'event') L.add(this.txt(cx, content.y + content.h - 22, 'DRAW', 17, HEX.red, COND, 'bold'));
-    if (!lower && sp.kind === 'policy') L.add(this.txt(cx, content.y + content.h - 22, 'DRAW', 17, HEX.red, COND, 'bold'));
+    if (!lower && sp.kind === 'event') L.add(this.txt(cx, content.y + content.h - 22, this.T('board.draw'), 17, HEX.red, COND, 'bold'));
+    if (!lower && sp.kind === 'policy') L.add(this.txt(cx, content.y + content.h - 22, this.T('board.draw'), 17, HEX.red, COND, 'bold'));
   }
 
   private drawGlyph(sp: Space, x: number, y: number, k: number) {
@@ -216,29 +230,29 @@ export class BoardScene extends Phaser.Scene {
       g.lineStyle(10, C.paper, 1).lineBetween(x + 24, y + 28, x + 112, y + 28);
       g.fillStyle(C.paper, 1).fillPoints([{ x: x + 108, y: y + 10 }, { x: x + 144, y: y + 28 }, { x: x + 108, y: y + 46 }], true);
       L.add(this.txt(x + 28, y + 110, 'GO', big ? 76 : 70, HEX.paper, 'Anton, Impact, sans-serif', 'normal', [0, 0.5]));
-      if (!big) L.add(this.txt(x + 10, y + 138, ['+200 CR', 'EXPANDED', 'REPRODUCTION'].join(String.fromCharCode(10)), 11, HEX.paper, COND, 'bold', [0, 0], 90, 'left'));
+      if (!big) L.add(this.txt(x + 10, y + 138, this.T('board.go_cap'), 11, HEX.paper, COND, 'bold', [0, 0], 90, 'left'));
     } else if (sp.id === 10) {
       g.fillStyle(C.coal3, 1).fillRect(x, y, w, h);
       g.fillStyle(C.brass, 1).fillRect(x + 40, y + 36, 100, 100);
       g.fillStyle(C.coal, 1).fillRect(x + 48, y + 44, 84, 84);
       g.lineStyle(6, C.brass, 1);
       for (let i = 0; i < 4; i++) g.lineBetween(x + 62 + i * 18, y + 44, x + 62 + i * 18, y + 128);
-      L.add(this.txt(x + w / 2, y + 150, big ? 'STRIKE' : 'LABOR STRIKE', big ? 22 : 24, HEX.paper, COND));
-      if (!big) L.add(this.txt(x + w / 2, y + 22, 'JUST VISITING', 15, HEX.brass, COND));
+      L.add(this.txt(x + w / 2, y + 150, big ? this.T('board.strike_short') : this.T('board.strike'), big ? 22 : 24, HEX.paper, COND));
+      if (!big) L.add(this.txt(x + w / 2, y + 22, this.T('board.just_visiting'), 15, HEX.brass, COND));
     } else if (sp.id === 20) {
       g.fillStyle(C.paper, 1).fillRect(x, y, w, h);
       g.lineStyle(10, C.red, 1).strokeCircle(x + w / 2, y + 72, 40);
       g.lineStyle(10, C.ink, 1).lineBetween(x + w / 2 - 28, y + 100, x + w / 2 + 28, y + 44);
-      L.add(this.txt(x + w / 2, y + 140, big ? 'FREE MARKET' : 'FREE COMPETITIVE', big ? 21 : 20, HEX.ink, COND));
-      if (!big) L.add(this.txt(x + w / 2, y + 158, 'MARKET', 20, HEX.ink, COND));
+      L.add(this.txt(x + w / 2, y + 134, big ? this.T('board.free_short') : this.T('board.free1'), big ? 19 : 19, HEX.ink, COND));
+      if (!big) L.add(this.txt(x + w / 2, y + 152, this.T('board.free2'), 19, HEX.ink, COND));
     } else {
       g.fillStyle(C.ink, 1).fillRect(x, y, w, h);
       g.fillStyle(C.red, 1).fillPoints([{ x, y }, { x: x + 86, y }, { x, y: y + 86 }], true).fillPoints([{ x: x + w, y: y + h }, { x: x + w - 86, y: y + h }, { x: x + w, y: y + h - 86 }], true);
       g.fillStyle(C.paper, 1).fillCircle(x + w / 2, y + 74, 38);
       g.fillStyle(C.ink, 1).fillCircle(x + w / 2, y + 74, 28);
       g.fillStyle(C.paper, 1).fillCircle(x + w / 2, y + 74, 12);
-      L.add(this.txt(x + w / 2, y + 138, big ? 'ANTI-MONOPOLY' : 'ANTI-MONOPOLY', big ? 18 : 20, HEX.paper, COND));
-      L.add(this.txt(x + w / 2, y + 157, 'GO TO STRIKE', big ? 15 : 15, HEX.brass, COND));
+      L.add(this.txt(x + w / 2, y + 138, this.T('board.anti'), big ? 18 : 20, HEX.paper, COND));
+      L.add(this.txt(x + w / 2, y + 157, this.T('board.anti2'), big ? 15 : 15, HEX.brass, COND));
     }
     g.lineStyle(3, C.ink, 1).strokeRect(x, y, w, h);
   }
@@ -256,7 +270,7 @@ export class BoardScene extends Phaser.Scene {
     this.statTexts.push(plaque);
     this.centerTexts.shadow = this.txt(cx + 5, c ? 258 : 288, 'MARXOPOLY', c ? 108 : 112, HEX.red, A, 'normal');
     this.centerTexts.logo = this.txt(cx, c ? 252 : 282, 'MARXOPOLY', c ? 108 : 112, HEX.paper, A, 'normal');
-    this.centerTexts.sub = this.txt(cx, c ? 330 : 358, 'THE POLITICAL ECONOMY BOARD GAME', c ? 28 : 26, HEX.brass, COND);
+    this.centerTexts.sub = this.txt(cx, c ? 330 : 358, this.T('board.subtitle'), c ? 28 : 26, HEX.brass, COND);
     this.centerTexts.round = this.txt(cx, c ? 440 : 450, '', c ? 64 : 46, HEX.paper, A, 'normal');
     this.centerTexts.turn = this.txt(cx, c ? 530 : 515, '', c ? 52 : 40, HEX.paper, COND);
     this.centerTexts.msg = this.txt(cx, c ? 1030 : 1010, '', c ? 34 : 28, HEX.paper, COND, 'bold', [0.5, 0], 780);
@@ -420,12 +434,12 @@ export class BoardScene extends Phaser.Scene {
     const t = this.centerTexts;
     if (!t.round) return;
     const limit = s.settings.mode === 'sustainable' ? 30 : s.settings.roundLimit;
-    t.round.setText(`ROUND ${s.round}${limit ? ' / ' + limit : ''}`);
-    t.mode.setText(s.settings.mode === 'sustainable' ? 'SUSTAINABLE DEVELOPMENT' : 'CAPITALIST COMPETITION');
+    t.round.setText(limit ? this.T('board.round_of', { n: s.round, limit }) : this.T('board.round', { n: s.round }));
+    t.mode.setText(this.T(`mode.${s.settings.mode}` as const).toUpperCase());
     const actor = s.players.find(p => p.id === s.actorId) ?? s.players[s.turn];
-    t.turn.setText(s.phase === 'finished' ? 'GAME OVER' : `${actor ? actor.name.toUpperCase() : ''} TO ACT`);
-    const lastLog = s.log[s.log.length - 1]?.text ?? '';
-    t.msg.setText(lastLog);
+    t.turn.setText(s.phase === 'finished' ? this.T('board.game_over') : this.T('board.to_act', { name: actor ? actor.name.toUpperCase() : '' }));
+    const last = s.log[s.log.length - 1];
+    t.msg.setText(last ? tm(this.lang, { key: last.key, params: last.params }) : '');
     this.fitText(t.msg, this.compact ? 140 : 110, 16);
     this.diceVals = s.dice;
     this.drawDice();
@@ -438,7 +452,7 @@ export class BoardScene extends Phaser.Scene {
         const col = PLAYER_COLORS[i % 4];
         const line = this.add.graphics();
         line.fillStyle(Phaser.Display.Color.HexStringToColor(col).color, 1).fillRect(300, y - 13, 12, 26);
-        const name = this.txt(324, y, `${p.name.toUpperCase()}${p.bankrupt ? '  BANKRUPT' : ''}`, 26, p.bankrupt ? '#8a7f6a' : HEX.paper, COND, 'bold', [0, 0.5]);
+        const name = this.txt(324, y, `${p.name.toUpperCase()}${p.bankrupt ? '  ' + this.T('board.bankrupt') : ''}`, 26, p.bankrupt ? '#8a7f6a' : HEX.paper, COND, 'bold', [0, 0.5]);
         const cash = this.txt(1020, y, p.bankrupt ? '' : `${p.cash} cr`, 28, HEX.brass, COND, 'bold', [1, 0.5]);
         this.statTexts.push(name, cash);
         this.statTexts.push(line);

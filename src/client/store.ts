@@ -2,8 +2,10 @@ import { create } from 'zustand';
 import type { Action, GameEvent, PublicGameState } from '../shared/types';
 import type { AiAnswer, JoinData, RoomPublic } from '../shared/protocol';
 import { boardRef } from './boardRef';
+import { detectLang, errorText, t as tr, type Lang } from '../shared/i18n';
 import { RequestError, request, sessionStore, socket, type StoredSession } from './socket';
 
+export type Gfx = '3d-high' | '3d-low' | '2d';
 export type Tab = 'action' | 'property' | 'advisor' | 'log' | 'players';
 export interface ChatMsg { id: number; role: 'user' | 'ai'; text: string; source?: 'claude' | 'offline'; kind?: string }
 export interface Toast { id: number; kind: 'error' | 'info'; text: string }
@@ -25,17 +27,37 @@ interface Store {
   glossaryQuery: string;
   chat: ChatMsg[];
   chatBusy: boolean;
-  kickedMsg: string | null;
+  kickedMsg: boolean;
+  lang: Lang;
+  /** the player's graphics choice */
+  gfx: Gfx;
+  /** true when 3D could not start (no WebGL, assets failed, context lost) and the 2D board is used instead */
+  gfxFallback: boolean;
+  /** 0..1 while the 3D board is loading, null otherwise */
+  loadFrac: number | null;
 
   set: (p: Partial<Store>) => void;
   toast: (kind: Toast['kind'], text: string) => void;
   reset: () => void;
 }
 
+function initialLang(): Lang {
+  let stored: string | null = null;
+  try { stored = localStorage.getItem('marx.lang'); } catch { /* storage may be blocked */ }
+  return detectLang(stored, typeof navigator === 'undefined' ? undefined : navigator.language);
+}
+
+function initialGfx(): Gfx {
+  try { const s = localStorage.getItem('marx.gfx'); if (s === '3d-high' || s === '3d-low' || s === '2d') return s; } catch { /* ignore */ }
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 760;
+  return narrow || (mem != null && mem <= 4) ? '3d-low' : '3d-high';
+}
+
 let toastId = 1;
 export const useStore = create<Store>((set, get) => ({
   conn: 'connecting', booted: false, session: null, room: null, game: null, seq: 0, animating: false, selectedSpace: null, tab: 'action',
-  cardShown: null, narration: null, toasts: [], modal: null, glossaryQuery: '', chat: [], chatBusy: false, kickedMsg: null,
+  cardShown: null, narration: null, toasts: [], modal: null, glossaryQuery: '', chat: [], chatBusy: false, kickedMsg: false, lang: initialLang(), gfx: initialGfx(), gfxFallback: false, loadFrac: null,
   set: p => set(p),
   toast: (kind, text) => {
     const id = toastId++;
@@ -61,7 +83,7 @@ async function pump() {
       const animated = item.events.some(e => e.type === 'dice' || e.type === 'move');
       if (animated && boardRef.current && !document.hidden) {
         useStore.setState({ animating: true });
-        try { await Promise.race([boardRef.current.play(item.events, fast), sleep(fast ? 1500 : 4500)]); } catch { /* animation must never block state */ }
+        try { await Promise.race([boardRef.current.play(item.events, fast), sleep(fast ? 2500 : 6000)]); } catch { /* animation must never block state */ }
       }
       const card = item.events.find(e => e.type === 'card');
       useStore.setState({
@@ -103,12 +125,12 @@ export function initSocket() {
     }
   };
 
-  socket.on('connect', () => { st.setState({ conn: 'online' }); void tryResume(); });
+  socket.on('connect', () => { st.setState({ conn: 'online' }); socket.emit('session:set-lang', { lang: st.getState().lang }); void tryResume(); });
   socket.on('disconnect', () => st.setState({ conn: 'offline' }));
   socket.on('connect_error', () => st.setState({ conn: 'offline', booted: true }));
   socket.on('room:updated', (room: RoomPublic) => st.setState({ room }));
-  socket.on('room:kicked', (i: { reason: string }) => { sessionStore.clear(); st.getState().reset(); st.setState({ kickedMsg: i.reason }); });
-  socket.on('session:replaced', () => { sessionStore.clear(); st.getState().reset(); st.getState().toast('info', 'This session was opened in another tab.'); });
+  socket.on('room:kicked', () => { sessionStore.clear(); st.getState().reset(); st.setState({ kickedMsg: true }); });
+  socket.on('session:replaced', () => { sessionStore.clear(); st.getState().reset(); st.getState().toast('info', tr(st.getState().lang, 'toast.replaced')); });
   socket.on('game:snapshot', (p: { state: PublicGameState; seq: number }) => applySnapshot(p.state, p.seq));
   socket.on('game:state-updated', (p: { state: PublicGameState; events: GameEvent[]; seq: number }) => {
     if (p.seq <= useStore.getState().seq && !queue.length) return;
@@ -123,12 +145,28 @@ export function initSocket() {
 }
 
 // ---------- commands ----------
-const fail = (e: unknown) => { useStore.getState().toast('error', e instanceof Error ? e.message : 'Something went wrong.'); };
+const fail = (e: unknown) => {
+  const lang = useStore.getState().lang;
+  useStore.getState().toast('error', e instanceof RequestError ? errorText(lang, e.code, e.message) : tr(lang, 'err.generic'));
+};
 
 function adopt(d: JoinData) {
   const s = { code: d.code, playerId: d.playerId, token: d.token };
   sessionStore.save(s);
-  useStore.setState({ session: s, room: d.room, game: null, seq: 0, kickedMsg: null });
+  useStore.setState({ session: s, room: d.room, game: null, seq: 0, kickedMsg: false });
+}
+
+export function setGfx(gfx: Gfx) {
+  try { localStorage.setItem('marx.gfx', gfx); } catch { /* ignore */ }
+  useStore.setState({ gfx, gfxFallback: false });
+}
+
+export function setLang(lang: Lang) {
+  try { localStorage.setItem('marx.lang', lang); } catch { /* ignore */ }
+  document.documentElement.lang = lang;
+  useStore.setState({ lang });
+  boardRef.current?.setLang(lang);
+  if (socket.connected) socket.emit('session:set-lang', { lang });
 }
 
 export const commands = {
@@ -162,10 +200,11 @@ export const commands = {
     const id = Date.now();
     useStore.setState({ chat: [...s.chat, { id, role: 'user', text: question, kind }], chatBusy: true });
     try {
-      const a = await request<AiAnswer>('ai:ask', { kind, question, spaceId });
+      const lang = useStore.getState().lang;
+      const a = await request<AiAnswer>('ai:ask', { kind, question, spaceId, lang });
       useStore.setState(x => ({ chat: [...x.chat, { id: id + 1, role: 'ai', text: a.text, source: a.source, kind }], chatBusy: false }));
     } catch (e) {
-      useStore.setState(x => ({ chat: [...x.chat, { id: id + 1, role: 'ai', text: e instanceof Error ? e.message : 'The assistant is unavailable.', kind }], chatBusy: false }));
+      useStore.setState(x => ({ chat: [...x.chat, { id: id + 1, role: 'ai', text: e instanceof RequestError ? errorText(useStore.getState().lang, e.code, e.message) : tr(useStore.getState().lang, 'err.AI_UNAVAILABLE'), kind }], chatBusy: false }));
     }
   },
 };

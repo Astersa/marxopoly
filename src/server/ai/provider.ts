@@ -1,7 +1,9 @@
+import type { Lang } from '../../shared/i18n';
 import type { GameEvent, PublicGameState } from '../../shared/types';
 
 export interface AiContext {
   kind: 'tutor' | 'advisor' | 'narrator';
+  lang?: Lang;
   question?: string;
   spaceId?: number;
   state?: PublicGameState;

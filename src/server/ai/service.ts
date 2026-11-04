@@ -1,3 +1,4 @@
+import type { Lang } from '../../shared/i18n';
 import type { AiAnswer } from '../../shared/protocol';
 import { ActionError, type GameEvent, type GameState } from '../../shared/types';
 import type { Room, Seat } from '../rooms';
@@ -43,14 +44,18 @@ export function createAiService(opts: AiServiceOptions = {}): AiHooks {
       if (room.aiCount >= maxPerRoom) throw new ActionError('RATE_LIMITED', 'This room has used all of its assistant questions.');
       w.push(t); windows.set(seat.playerId, w);
       room.aiCount++;
-      return run({ kind: req.kind, question: req.question, spaceId: req.spaceId, state: room.session?.snapshot(), playerId: seat.playerId });
+      return run({ kind: req.kind, lang: req.lang as Lang | undefined, question: req.question, spaceId: req.spaceId, state: room.session?.snapshot(), playerId: seat.playerId });
     },
-    async narrate(room: Room, state: GameState, events: GameEvent[]) {
-      if (room.aiCount >= maxPerRoom) return null;
-      room.aiCount++;
-      const snap = room.session?.snapshot();
-      const res = await run({ kind: 'narrator', events, state: snap });
-      return res.text || null;
+    /** One narration for one language. Only calls that reach the remote provider count against the room budget; offline text is free. */
+    async narrate(room: Room, _state: GameState, events: GameEvent[], lang: Lang) {
+      const ctx: AiContext = { kind: 'narrator', events, lang, state: room.session?.snapshot() };
+      if (remote && room.aiCount < maxPerRoom) {
+        room.aiCount++;
+        const res = await run(ctx);
+        return res.text || null;
+      }
+      const { system, prompt } = buildPrompt(ctx);
+      return (await offline.complete({ system, prompt, maxTokens: MAX_TOKENS, ctx })) || null;
     },
   };
 }

@@ -1,33 +1,31 @@
 import { GROUPS, GROUP_SPACES, SPACES } from '../../shared/board';
 import { CARD_MAP } from '../../shared/cards';
-import { GLOSSARY_MAP } from '../../shared/glossary';
+import { localizedCard, localizedGroup, localizedSpace, localizedTerm, t, type Lang } from '../../shared/i18n';
 import { financials, getPlayer, ownedBy, rentFor } from '../../shared/rules';
 import type { GameState, PublicGameState } from '../../shared/types';
 import { findCards, findSpaces, retrieveGlossary } from './context';
 import type { AiContext, AiProvider, CompleteRequest } from './provider';
 
-function tutor(ctx: AiContext): string {
+function tutor(ctx: AiContext, lang: Lang): string {
   const q = ctx.question ?? '';
   const out: string[] = [];
   const spaces = ctx.spaceId != null ? [SPACES[ctx.spaceId]] : findSpaces(q);
   for (const s of spaces) {
-    out.push(`${s.name}: ${s.definition} ${s.explanation} Example: ${s.example} In the game: ${s.mechanic}`);
-    if (s.glossary && GLOSSARY_MAP[s.glossary]) out.push(`Key concept, ${GLOSSARY_MAP[s.glossary].term}: ${GLOSSARY_MAP[s.glossary].definition}`);
+    const ls = localizedSpace(lang, s.id);
+    out.push(t(lang, 'ai.tutor_space', { name: ls.name, definition: ls.definition, explanation: ls.explanation, example: ls.example, mechanic: ls.mechanic }));
+    if (s.glossary) { const g = localizedTerm(lang, s.glossary); if (g) out.push(t(lang, 'ai.tutor_concept', { term: g.term, definition: g.definition })); }
   }
-  for (const c of findCards(q)) out.push(`Card "${c.name}": ${c.explanation} Example: ${c.example}`);
-  for (const g of retrieveGlossary(q, spaces.length ? 1 : 2)) out.push(`${g.term}: ${g.definition} Example: ${g.example}`);
-  if (!out.length) {
-    return 'I could not find that in the glossary. Try asking about a concept such as surplus value, organic composition of capital, monopoly, cartel, trust, or expanded reproduction, or click a board space and ask about it.';
-  }
-  return out.join('\n\n');
+  for (const c of findCards(q)) { const lc = localizedCard(lang, c.id); out.push(t(lang, 'ai.tutor_card', { name: lc.name, explanation: lc.explanation, example: lc.example })); }
+  for (const g of retrieveGlossary(q, spaces.length ? 1 : 2)) { const e = localizedTerm(lang, g.id); out.push(t(lang, 'ai.tutor_term', { term: e.term, definition: e.definition, example: e.example })); }
+  return out.length ? out.join('\n\n') : t(lang, 'ai.tutor_none');
 }
 
-function advisor(ctx: AiContext): string {
+function advisor(ctx: AiContext, lang: Lang): string {
   const st = ctx.state as unknown as GameState | undefined;
   const pid = ctx.playerId;
   const me = st && pid ? getPlayer(st, pid) : undefined;
-  if (!st || !me) return 'Join a game to get advice.';
-  if (me.bankrupt) return 'You are out of the game. Watch how the others manage their capital.';
+  if (!st || !me) return t(lang, 'ai.adv_join');
+  if (me.bankrupt) return t(lang, 'ai.adv_out');
   const tips: string[] = [];
   const f = financials(st, me.id);
 
@@ -41,11 +39,7 @@ function advisor(ctx: AiContext): string {
       if (r > worst.rent) worst = { id, rent: r };
     }
   }
-  if (worst.rent > 0) {
-    tips.push(worst.rent >= me.cash * 0.5
-      ? `Risk: ${SPACES[worst.id].name} ahead can charge about ${worst.rent} cr, more than half of your ${me.cash} cr. Keep a cash buffer or mortgage something you do not need.`
-      : `Watch out for ${SPACES[worst.id].name} ahead: rent could be about ${worst.rent} cr. Your ${me.cash} cr can cover it.`);
-  }
+  if (worst.rent > 0) tips.push(t(lang, worst.rent >= me.cash * 0.5 ? 'ai.adv_risk_high' : 'ai.adv_risk_low', { space: worst.id, rent: worst.rent, cash: me.cash }));
 
   // near-complete groups
   for (const g of Object.keys(GROUP_SPACES) as (keyof typeof GROUP_SPACES)[]) {
@@ -54,7 +48,9 @@ function advisor(ctx: AiContext): string {
     const missing = ids.filter(id => st.props[id].owner !== me.id);
     if (mine.length > 0 && missing.length === 1) {
       const owner = st.props[missing[0]].owner;
-      tips.push(`You are one space short of the ${GROUPS[g].name} group (${SPACES[missing[0]].name}${owner ? ' is held by ' + (getPlayer(st, owner)?.name ?? 'another player') : ' is still free'}). Completing it doubles base rent and unlocks development.`);
+      tips.push(owner
+        ? t(lang, 'ai.adv_group_held', { group: g, space: missing[0], owner: getPlayer(st, owner)?.name ?? t(lang, 'ai.player') })
+        : t(lang, 'ai.adv_group_free', { group: g, space: missing[0] }));
       break;
     }
   }
@@ -64,33 +60,34 @@ function advisor(ctx: AiContext): string {
   if (full.length) {
     const g = GROUPS[full[0]];
     tips.push(me.cash - g.buildCost > 200
-      ? `You own all of ${g.name}. Developing it costs ${g.buildCost} cr per level; its organic composition is ${g.ocLabel} and the rate of surplus value is ${Math.round(g.mPrime * 100)}%, so higher levels raise rent a lot.`
-      : `You own all of ${g.name} but cash is tight. Build when you keep more than 200 cr in reserve.`);
+      ? t(lang, 'ai.adv_dev_ok', { group: g.id, cost: g.buildCost, oc: g.ocLabel, m: Math.round(g.mPrime * 100) })
+      : t(lang, 'ai.adv_dev_tight', { group: g.id }));
   }
 
   const mortgaged = ownedBy(st, me.id).filter(id => st.props[id].mortgaged);
-  if (mortgaged.length && me.cash > 600) tips.push(`You can afford to redeem ${SPACES[mortgaged[0]].name}; mortgaged spaces earn no rent.`);
-  if (me.indices.laborRelations < 25) tips.push('Labor relations are below 25: your rents are cut by 15%. A Labor protection policy or socially positive groups can repair it.');
+  if (mortgaged.length && me.cash > 600) tips.push(t(lang, 'ai.adv_redeem', { space: mortgaged[0] }));
+  if (me.indices.laborRelations < 25) tips.push(t(lang, 'ai.adv_labor'));
   if (st.settings.mode === 'sustainable') {
-    const weak = (['technology', 'laborRelations', 'socialContribution', 'sustainability'] as ('technology' | 'laborRelations' | 'socialContribution' | 'sustainability')[]).sort((a, b) => me.indices[a] - me.indices[b])[0];
-    tips.push(`In Sustainable Development, score balances money (35%), social (25%), technology (20%) and sustainability (20%). Your weakest index is ${weak} at ${me.indices[weak]}.`);
+    const keys = ['technology', 'laborRelations', 'socialContribution', 'sustainability'] as ('technology' | 'laborRelations' | 'socialContribution' | 'sustainability')[];
+    const weak = keys.sort((a, b) => me.indices[a] - me.indices[b])[0];
+    tips.push(t(lang, 'ai.adv_sus', { index: t(lang, `idx.${weak}` as const), value: me.indices[weak] }));
   }
-  if (!tips.length) tips.push(`You have ${me.cash} cr and a net worth of ${f.netWorth}. Buy spaces that complete a group, and keep about 200 cr in reserve.`);
-  return tips.slice(0, 4).map(t => '- ' + t).join('\n');
+  if (!tips.length) tips.push(t(lang, 'ai.adv_default', { cash: me.cash, nw: f.netWorth }));
+  return tips.slice(0, 4).map(x => '- ' + x).join('\n');
 }
 
-function narrator(ctx: AiContext): string {
+function narrator(ctx: AiContext, lang: Lang): string {
   const ev = ctx.events ?? [];
-  const names = (id: string) => ctx.state?.players.find(p => p.id === id)?.name ?? 'A player';
+  const names = (id: string) => ctx.state?.players.find(p => p.id === id)?.name ?? t(lang, 'ai.player');
   const card = ev.find(e => e.type === 'card');
   if (card && card.type === 'card') {
-    const c = CARD_MAP[card.cardId];
-    return `${names(card.playerId)} turns over "${c.name}". ${c.explanation}`;
+    const c = localizedCard(lang, card.cardId);
+    return t(lang, 'ai.narr_card', { name: names(card.playerId), card: c.name, explanation: c.explanation });
   }
   const b = ev.find(e => e.type === 'bankrupt');
-  if (b && b.type === 'bankrupt') return `${names(b.playerId)} has gone bankrupt. In a competitive market, capital that cannot be recovered is swallowed by stronger rivals.`;
+  if (b && b.type === 'bankrupt') return t(lang, 'ai.narr_bankrupt', { name: names(b.playerId) });
   const g = ev.find(e => e.type === 'gameover');
-  if (g && g.type === 'gameover') return g.winnerId ? `${names(g.winnerId)} ends the game on top. Check the summary for the concepts you met.` : 'The game is over. Check the summary for the concepts you met.';
+  if (g && g.type === 'gameover') return g.winnerId ? t(lang, 'ai.narr_win', { name: names(g.winnerId) }) : t(lang, 'ai.narr_over');
   return '';
 }
 
@@ -98,9 +95,12 @@ export class OfflineProvider implements AiProvider {
   readonly name = 'offline';
   async complete(req: CompleteRequest): Promise<string> {
     const ctx = req.ctx;
-    if (!ctx) return 'The offline assistant needs a question.';
-    if (ctx.kind === 'tutor') return tutor(ctx);
-    if (ctx.kind === 'advisor') return advisor(ctx as AiContext & { state: PublicGameState });
-    return narrator(ctx);
+    const lang: Lang = ctx?.lang ?? 'en';
+    if (!ctx) return t(lang, 'ai.need_q');
+    if (ctx.kind === 'tutor') return tutor(ctx, lang);
+    if (ctx.kind === 'advisor') return advisor(ctx as AiContext & { state: PublicGameState }, lang);
+    return narrator(ctx, lang);
   }
 }
+
+export { CARD_MAP, localizedGroup };

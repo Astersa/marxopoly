@@ -17,6 +17,10 @@ export interface GameSettings {
 }
 export const DEFAULT_SETTINGS: GameSettings = { mode: 'capitalist', roundLimit: 0, auctions: true, turnTimer: 90 };
 
+/** A translatable message: the client turns key + params into text in the viewer's language. */
+export type MsgParam = string | number | Msg;
+export interface Msg { key: string; params?: Record<string, MsgParam> }
+
 export interface PlayerState {
   id: string;
   name: string;
@@ -45,7 +49,7 @@ export interface Debt {
   playerId: string;
   toId: string | null;
   amount: number;
-  reason: string;
+  reason: Msg;
 }
 
 export interface Auction {
@@ -75,7 +79,7 @@ export interface Modifier {
   source: string;
 }
 
-export interface LogEntry { n: number; round: number; text: string }
+export interface LogEntry { n: number; round: number; key: string; params?: Record<string, MsgParam> }
 
 export interface ScoreLine {
   financial: number; social: number; technology: number; sustainability: number; total: number;
@@ -152,10 +156,10 @@ export type GameEvent =
   | { type: 'move'; playerId: string; from: number; to: number; steps: number; direct: boolean }
   | { type: 'card'; playerId: string; cardId: string; deck: DeckId }
   | { type: 'jail'; playerId: string }
-  | { type: 'cash'; playerId: string; delta: number; reason: string }
+  | { type: 'cash'; playerId: string; delta: number; reason: Msg }
   | { type: 'bankrupt'; playerId: string }
   | { type: 'gameover'; winnerId: string | null }
-  | { type: 'log'; text: string };
+  | { type: 'log'; key: string; params?: Record<string, MsgParam> };
 
 export type Rng = () => number;
 
