@@ -39,11 +39,13 @@ export const SettingsPatchSchema = z.object({
   roundLimit: z.union([z.literal(0), z.literal(40), z.literal(60)]).optional(),
   auctions: z.boolean().optional(),
   turnTimer: z.number().int().min(0).max(600).optional(),
+  isPublic: z.boolean().optional(),
 }).strict();
 
 export const schemas = {
   'room:create': z.object({ name: nameSchema, avatar: avatarSchema.default(0) }),
   'room:join': z.object({ code: z.string().trim().toUpperCase().max(10), name: nameSchema, avatar: avatarSchema.default(0) }),
+  'room:list': z.object({}).passthrough().optional(),
   'room:leave': z.object({}).passthrough().optional(),
   'room:ready': z.object({ ready: z.boolean() }),
   'room:kick': z.object({ playerId: z.string().max(40) }),
@@ -79,6 +81,15 @@ export interface RoomPublic {
   seats: SeatPublic[];
   maxSeats: number;
   aiProvider: string;
+}
+
+/** Only what a stranger needs to pick a room: no player ids, no tokens. */
+export interface RoomListing {
+  code: string;
+  hostName: string;
+  mode: GameSettings['mode'];
+  players: number;
+  maxSeats: number;
 }
 
 export type Ack<T = unknown> = { ok: true; data: T } | { ok: false; code: string; message: string };

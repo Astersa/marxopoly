@@ -122,6 +122,42 @@ describe('rooms over sockets', () => {
   });
 });
 
+describe('public room list', () => {
+  const list = async (s: Socket) => (await emit<any[]>(s, 'room:list')).data!;
+
+  it('lists only public, waiting rooms with free seats, and exposes no ids or tokens', async () => {
+    const { host, h, guests } = await lobby(2);
+    const stranger = await client();
+    expect(await list(stranger)).toEqual([]); // hidden by default
+
+    await emit(host, 'room:update-settings', { isPublic: true });
+    const rooms = await list(stranger);
+    expect(rooms).toEqual([{ code: h.code, hostName: 'Host', mode: 'capitalist', players: 2, maxSeats: 4 }]);
+    expect(JSON.stringify(rooms)).not.toContain(h.token);
+    expect(JSON.stringify(rooms)).not.toContain(h.playerId);
+
+    expect((await emit(guests[0].s, 'room:update-settings', { isPublic: false })).code).toBe('NOT_HOST');
+
+    await emit(host, 'room:add-bot');
+    await emit(host, 'room:add-bot');
+    expect(await list(stranger)).toEqual([]); // full
+
+    await emit(host, 'room:kick', { playerId: guests[0].j.playerId });
+    expect((await list(stranger)).length).toBe(1);
+    await emit(host, 'room:update-settings', { isPublic: false });
+    expect(await list(stranger)).toEqual([]); // hidden again
+  });
+
+  it('drops a public room once the game has started', async () => {
+    const { host, guests } = await lobby(2);
+    await emit(host, 'room:update-settings', { isPublic: true });
+    await emit(guests[0].s, 'room:ready', { ready: true });
+    expect((await emit(host, 'room:start')).ok).toBe(true);
+    const stranger = await client();
+    expect(await list(stranger)).toEqual([]);
+  });
+});
+
 describe('game over sockets', () => {
   it('rejects wrong turn, dedupes actionId, and hides secrets', async () => {
     const g = await startGame(2);

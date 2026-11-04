@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { RoomListing } from '../../shared/protocol';
 import { Avatar } from '../avatars';
 import { LangSwitch } from '../components/LangSwitch';
 import { useL, type L10n } from '../i18n';
-import { sessionStore } from '../socket';
+import { request, sessionStore } from '../socket';
 import { commands, useStore } from '../store';
 
 export function Hero({ L }: { L: L10n }) {
@@ -36,6 +37,17 @@ export function Home() {
   const { conn, kickedMsg } = useStore();
   const last = sessionStore.last();
   const ready = name.trim().length > 0 && conn === 'online';
+
+  const [rooms, setRooms] = useState<RoomListing[]>([]);
+
+  useEffect(() => {
+    if (conn !== 'online') return;
+    let live = true;
+    const load = () => request<RoomListing[]>('room:list', {}).then(r => { if (live) setRooms(r); }).catch(() => undefined);
+    void load();
+    const timer = setInterval(load, 5000);
+    return () => { live = false; clearInterval(timer); };
+  }, [conn]);
 
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
 
@@ -80,6 +92,23 @@ export function Home() {
             <input aria-label={t('home.code_label')} data-testid="code-input" className="input font-poster tracking-[0.3em] text-center uppercase" maxLength={5} value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder={t('home.code_ph')} autoComplete="off" />
             <button className="btn shrink-0" type="submit" data-testid="join" disabled={!ready || code.trim().length < 5 || busy}>{t('home.join')}</button>
           </form>
+
+          <div className="mt-5 h-label !text-[color:var(--ink)]">{t('home.public_rooms')}</div>
+          {rooms.length === 0
+            ? <p className="mt-1 text-sm text-[color:var(--ink)]/70" data-testid="no-rooms">{t('home.no_rooms')}</p>
+            : (
+              <ul className="mt-1 grid gap-1.5 max-h-48 overflow-y-auto" data-testid="room-list">
+                {rooms.map(r => (
+                  <li key={r.code} className="flex items-center gap-2 bg-[color:var(--ink)]/10 px-2.5 py-1.5 text-[color:var(--ink)]">
+                    <span className="flex-1 min-w-0">
+                      <b className="block truncate">{t('home.room_host', { name: r.hostName })}</b>
+                      <span className="text-sm">{r.mode === 'sustainable' ? t('mode.sustainable') : t('mode.capitalist')} · {r.players}/{r.maxSeats}</span>
+                    </span>
+                    <button className="btn btn-sm shrink-0" data-testid={`join-${r.code}`} disabled={!ready || busy} onClick={() => run(() => commands.join(r.code, name.trim(), avatar))}>{t('home.join')}</button>
+                  </li>
+                ))}
+              </ul>
+            )}
 
           {last && (
             <button className="btn btn-sm w-full mt-5" disabled={conn !== 'online' || busy} onClick={() => run(() => commands.rejoin())}>{t('home.rejoin', { code: last.code })}</button>

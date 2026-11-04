@@ -107,6 +107,10 @@ export function Lobby() {
               <input type="checkbox" className="w-5 h-5 accent-[color:var(--red)]" disabled={!isHost} checked={room.settings.auctions} onChange={e => set({ auctions: e.target.checked })} />
               {t('lobby.auctions')}
             </label>
+            <label className="flex items-center gap-3 font-semibold">
+              <input type="checkbox" data-testid="room-public" className="w-5 h-5 accent-[color:var(--red)]" disabled={!isHost} checked={room.settings.isPublic} onChange={e => set({ isPublic: e.target.checked })} />
+              <span>{t('lobby.public')}<span className="block text-sm font-normal text-[color:var(--muted)]">{t('lobby.public_hint')}</span></span>
+            </label>
 
             <div className="border-t-2 border-[color:var(--line)] pt-4 flex flex-col gap-2">
               {!isHost && me && (

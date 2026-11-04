@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { MAX_SEATS, ROOM_CODE_ALPHABET, ROOM_CODE_RE, type RoomPublic, type RoomStatus, type SeatPublic } from '../shared/protocol';
+import { MAX_SEATS, ROOM_CODE_ALPHABET, ROOM_CODE_RE, type RoomListing, type RoomPublic, type RoomStatus, type SeatPublic } from '../shared/protocol';
 import { ActionError, DEFAULT_SETTINGS, type GameSettings, type Rng } from '../shared/types';
 import { GameSession, type SessionHooks, type Timing } from './session';
 
@@ -256,6 +256,19 @@ export class RoomManager {
       }
     }
     return changed;
+  }
+
+  /** Public rooms a new player could join right now. */
+  listPublic(limit = 50): RoomListing[] {
+    const out: RoomListing[] = [];
+    for (const room of this.rooms.values()) {
+      if (out.length >= limit) break;
+      if (room.status !== 'WAITING' || !room.settings.isPublic || room.seats.length >= MAX_SEATS) continue;
+      const host = room.seats.find(s => s.playerId === room.hostId);
+      if (!host?.connected) continue;
+      out.push({ code: room.code, hostName: host.name, mode: room.settings.mode, players: room.seats.length, maxSeats: MAX_SEATS });
+    }
+    return out;
   }
 
   publicRoom(room: Room, aiProvider = 'offline'): RoomPublic {
