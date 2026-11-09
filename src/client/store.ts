@@ -91,12 +91,26 @@ async function pump() {
         ...(card && card.type === 'card' ? { cardShown: { cardId: card.cardId, playerId: card.playerId } } : {}),
       });
       boardRef.current?.sync(item.state);
+      announceRent(item);
       if (item.state.phase === 'finished' && useStore.getState().modal !== 'result') useStore.setState({ modal: 'result' });
     }
   } finally {
     running = false;
     useStore.setState({ animating: false });
   }
+}
+
+/** Pop a toast for every rent payment so landing on someone else's land is obvious. */
+function announceRent(item: QItem) {
+  const st = useStore.getState();
+  const name = (id: string) => item.state.players.find(p => p.id === id)?.name ?? '?';
+  const evs = item.events;
+  evs.forEach((e, i) => {
+    if (e.type !== 'cash' || e.reason.key !== 'reason.rent' || e.delta >= 0) return;
+    const recv = evs.slice(i + 1).find((x): x is Extract<GameEvent, { type: 'cash' }> => x.type === 'cash' && x.reason.key === 'reason.rent' && x.delta > 0);
+    const space = Number(e.reason.params?.space);
+    st.toast('info', tr(st.lang, 'toast.rent', { name: name(e.playerId), amount: -e.delta, to: recv ? name(recv.playerId) : '?', space }));
+  });
 }
 
 export function applySnapshot(state: PublicGameState, seq: number) {

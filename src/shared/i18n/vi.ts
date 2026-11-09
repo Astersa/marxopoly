@@ -277,6 +277,7 @@ export const vi: Record<Key, string> = {
   'result.label': 'Kết quả cuối cùng',
 
   // ---- toasts and errors
+  'toast.rent': '{name} dẫm vào {space}, trả {amount} cr tiền thuê cho {to}.',
   'toast.replaced': 'Phiên này đã được mở ở một thẻ trình duyệt khác.',
   'err.generic': 'Đã xảy ra lỗi.',
   'err.OFFLINE': 'Chưa kết nối tới máy chủ.',

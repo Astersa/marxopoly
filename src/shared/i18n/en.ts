@@ -275,6 +275,7 @@ export const en = {
   'result.label': 'Final results',
 
   // ---- toasts and errors (by code)
+  'toast.rent': '{name} landed on {space} and paid {amount} cr rent to {to}.',
   'toast.replaced': 'This session was opened in another tab.',
   'err.generic': 'Something went wrong.',
   'err.OFFLINE': 'Not connected to the server.',
